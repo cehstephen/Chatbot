@@ -1,0 +1,45 @@
+version: "3.1"
+
+stories:
+
+- story: happy path
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: mood_great
+  - action: utter_happy
+
+- story: sad path 1
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: mood_unhappy
+  - action: utter_cheer_up
+  - action: utter_did_that_help
+  - intent: affirm
+  - action: utter_happy
+
+- story: sad path 2
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: mood_unhappy
+  - action: utter_cheer_up
+  - action: utter_did_that_help
+  - intent: deny
+  - action: utter_goodbye
+
+- story: Express thanks
+  steps:
+  - intent: thank
+  - action: utter_thank
+
+- story: Python requests documentation
+  steps:
+  - intent: requests_documentation
+  - action: utter_requests_documentation
+
+- story: Daily Bible verse
+  steps:
+  - intent: daily_bible_verse
+  - action: utter_bible_daily_verse
