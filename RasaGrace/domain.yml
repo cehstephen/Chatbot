@@ -47,7 +47,7 @@ responses:
   - text: "Bye"
 
   utter_iamabot:
-  - text: "I am a bot, powered by Rasa."
+  - text: "I am a bot, developed by Stephen."
 
   utter_ask_clarification:
     - text: "Could you be more specific about what you're looking for?"

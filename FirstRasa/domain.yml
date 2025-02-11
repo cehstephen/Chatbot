@@ -35,7 +35,7 @@ responses:
   - text: "Bye"
 
   utter_iamabot:
-  - text: "I am a bot, powered by Rasa."
+  - text: "I am a bot, developed Stephen."
 
   utter_thank:
   - text: "It's my pleasure to be of help."
