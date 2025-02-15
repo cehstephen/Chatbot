@@ -11,6 +11,7 @@ intents:
   - thank
   - requests_documentation
   - daily_bible_verse
+  - sample_code
 
 
 entities:
@@ -41,7 +42,7 @@ responses:
   - text: "It's my pleasure to be of help."
 
   utter_requests_documentation:
-  - text: "check this website for python requests doc - https://requests.readthedocs.io/en/latest/user/quickstart/"
+  - text: "check this website for python requests doc https://requests.readthedocs.io/en/latest/user/quickstart"
     buttons:
       - title: "Requests doc - Read more"
         payload: "/visit_website"
@@ -49,6 +50,15 @@ responses:
 
   utter_bible_daily_verse:
   - text: "For God so loved the world, that HE gave HIS only... John 3:16"
+
+  utter_sample_code:
+    - text: |
+        ```python
+        def greet(name): 
+            return f"Hello, {{name}}!"
+        if __name__ == "__main__": 
+            print(greet("Alice"))
+        ```
 
 session_config:
   session_expiration_time: 60

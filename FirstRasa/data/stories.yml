@@ -1,7 +1,6 @@
 version: "3.1"
 
 stories:
-
 - story: happy path
   steps:
   - intent: greet
@@ -43,3 +42,8 @@ stories:
   steps:
   - intent: daily_bible_verse
   - action: utter_bible_daily_verse
+
+- story: Sample codes
+  steps:
+  - intent: sample_code
+  - action: utter_sample_code

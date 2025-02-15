@@ -96,6 +96,12 @@ nlu:
     - I need help with [requests](documentation)
     - python [requests](documentation)
 
+- intent: sample_code
+  examples: |
+    - show me sample code
+    - sample code
+    - how do you handle sample code
+
 - intent: daily_bible_verse
   examples: |
     - what the Bible verse today?
