@@ -47,3 +47,4 @@ stories:
   steps:
   - intent: sample_code
   - action: utter_sample_code
+  - action: utter_sample_response_header

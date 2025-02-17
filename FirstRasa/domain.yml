@@ -59,6 +59,19 @@ responses:
         if __name__ == "__main__": 
             print(greet("Alice"))
         ```
+  utter_sample_response_header:
+    - text: |
+        ```python
+        {{
+          'content-encoding': 'gzip',
+          'transfer-encoding': 'chunked',
+          'connection': 'close',
+          'server': 'nginx/1.0.4',
+          'x-runtime': '148ms',
+          'etag': '"e1ca502697e5c9317743dc078f67693f"',
+          'content-type': 'application/json'
+        }}
+        ```
 
 session_config:
   session_expiration_time: 60

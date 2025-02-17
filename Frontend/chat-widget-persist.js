@@ -14,7 +14,7 @@ class ChatWidget {
 
     addStyles() {
         const styles = `
-            .chat-widget {
+             .chat-widget {
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
@@ -448,7 +448,7 @@ class ChatWidget {
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                             </svg>
-<!--                            Copy-->
+                        <!--        Copy-->
                         </button>
                         <div class="copy-feedback">Copied!</div>
                     ` : ''}
@@ -494,7 +494,7 @@ class ChatWidget {
         typingEl.className = 'message bot-message';
         typingEl.innerHTML = `
             <div class="message-row">
-                <div class="avatar bot-avatar">A</div>
+                <div class="avatar bot-avatar">Bot</div>
                 <div class="typing-indicator">
                     <div class="typing-dot"></div>
                     <div class="typing-dot"></div>
