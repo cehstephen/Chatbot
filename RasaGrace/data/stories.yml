@@ -49,3 +49,29 @@ stories:
   - action: action_search_docs
   - intent: ask_more_details
   - action: action_search_docs
+
+stories:
+- story: User asks a question to OpenAI
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: ask_openai_question
+  - action: action_ask_openai
+  - intent: goodbye
+  - action: utter_goodbye
+
+- story: User directly asks OpenAI question
+  steps:
+  - intent: ask_openai_question
+  - action: action_ask_openai
+  - intent: ask_openai_question
+  - action: action_ask_openai
+  - intent: goodbye
+  - action: utter_goodbye
+
+- story: Multiple questions to OpenAI
+  steps:
+  - intent: ask_openai_question
+  - action: action_ask_openai
+  - intent: ask_openai_question
+  - action: action_ask_openai
