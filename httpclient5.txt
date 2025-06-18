@@ -1,64 +1,118 @@
-package com.example.config;
-
+import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactoryBuilder;
-import org.apache.hc.client5.http.ssl.TrustAllStrategy;
-import org.apache.hc.core5.http.io.SocketConfig;
-import org.apache.hc.core5.ssl.SSLContextBuilder;
-import org.apache.hc.core5.util.Timeout;
+import org.apache.hc.core.util.Timeout;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
-import javax.net.ssl.SSLContext;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 
+/**
+ * Spring Boot configuration class for creating a RestTemplate bean.
+ * This configuration uses Apache HttpClient 5 as the underlying HTTP transport layer,
+ * which provides advanced features like connection pooling and sophisticated request configuration.
+ *
+ * It is designed for robustness and performance in a production environment.
+ */
 @Configuration
-public class RestTemplateConfig {
+public class RestTemplateConfiguration {
 
+    // --- Configuration Constants ---
+
+    /**
+     * The maximum total number of connections for the entire pool.
+     */
+    private static final int MAX_TOTAL_CONNECTIONS = 100;
+
+    /**
+     * The maximum number of connections per single route (i.e., per host).
+     */
+    private static final int MAX_CONNECTIONS_PER_ROUTE = 20;
+
+    /**
+     * The timeout in milliseconds until a connection is established.
+     * A timeout value of zero is interpreted as an infinite timeout.
+     */
+    private static final Timeout CONNECT_TIMEOUT = Timeout.ofSeconds(5);
+
+    /**
+     * The timeout in milliseconds for waiting for a response.
+     * It's the time to wait for data after the connection has been established.
+     */
+    private static final Timeout RESPONSE_TIMEOUT = Timeout.ofSeconds(10);
+
+    /**
+     * The timeout in milliseconds when requesting a connection from the connection manager.
+     */
+    private static final Timeout CONNECTION_REQUEST_TIMEOUT = Timeout.ofSeconds(5);
+
+
+    /**
+     * Creates and configures the connection manager for the HttpClient.
+     * This connection manager pools connections to be reused by multiple threads,
+     * which is crucial for performance.
+     *
+     * @return A configured PoolingHttpClientConnectionManager instance.
+     */
     @Bean
-    public RestTemplate restTemplate() throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
-        // Create SSL context that trusts all certificates
-        SSLContext sslContext = SSLContextBuilder.create()
-                .loadTrustMaterial(new TrustAllStrategy())
-                .build();
+    public PoolingHttpClientConnectionManager poolingHttpClientConnectionManager() {
+        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(MAX_TOTAL_CONNECTIONS);
+        connectionManager.setDefaultMaxPerRoute(MAX_CONNECTIONS_PER_ROUTE);
+        return connectionManager;
+    }
 
-        // Create SSL connection socket factory
-        SSLConnectionSocketFactory sslSocketFactory = SSLConnectionSocketFactoryBuilder.create()
-                .setSslContext(sslContext)
+    /**
+     * Configures the default request settings for all HTTP requests made by the client.
+     * This includes setting various timeouts to prevent operations from blocking indefinitely.
+     *
+     * @return A configured RequestConfig instance.
+     */
+    @Bean
+    public RequestConfig requestConfig() {
+        return RequestConfig.custom()
+                .setConnectionRequestTimeout(CONNECTION_REQUEST_TIMEOUT)
+                .setConnectTimeout(CONNECT_TIMEOUT)
+                .setResponseTimeout(RESPONSE_TIMEOUT)
                 .build();
+    }
 
-        // Configure socket settings
-        SocketConfig socketConfig = SocketConfig.custom()
-                .setSoTimeout(Timeout.ofSeconds(30))
-                .build();
-
-        // Create and configure connection manager
-        PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
-                .setSSLSocketFactory(sslSocketFactory)
-                .setDefaultSocketConfig(socketConfig)
-                .setMaxConnTotal(200)
-                .setMaxConnPerRoute(50)
-                .build();
-
-        // Build HTTP client
-        CloseableHttpClient httpClient = HttpClients.custom()
+    /**
+     * Creates the main CloseableHttpClient bean.
+     * This client is built with the connection manager and default request configuration.
+     * It is the core component that executes HTTP requests.
+     *
+     * @param connectionManager The connection manager to use.
+     * @param requestConfig The default request configuration.
+     * @return A configured CloseableHttpClient instance.
+     */
+    @Bean
+    public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager connectionManager, RequestConfig requestConfig) {
+        return HttpClientBuilder.create()
                 .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(requestConfig)
+                // Optionally add retry handler, keep-alive strategy, etc.
                 .build();
+    }
 
-        // Create request factory with timeouts
-        HttpComponentsClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        requestFactory.setConnectTimeout(Duration.ofSeconds(10));
-        requestFactory.setConnectionRequestTimeout(Duration.ofSeconds(10));
-
+    /**
+     * Creates the RestTemplate bean.
+     * This is the central Spring class for client-side HTTP access. It is configured
+     * to use the HttpComponentsClientHttpRequestFactory, which in turn uses our
+     * custom-configured Apache HttpClient 5.
+     *
+     * @param httpClient The underlying CloseableHttpClient.
+     * @return A configured RestTemplate instance.
+     */
+    @Bean
+    public RestTemplate restTemplate(CloseableHttpClient httpClient) {
+        // HttpComponentsClientHttpRequestFactory is an implementation of ClientHttpRequestFactory
+        // that uses Apache HttpClient to create requests.
+        ClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
         return new RestTemplate(requestFactory);
     }
 }
