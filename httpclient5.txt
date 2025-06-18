@@ -1,9 +1,10 @@
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
 import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.client5.http.ssl.TrustAllStrategy;
+import org.apache.hc.core.ssl.SSLContextBuilder;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,11 +12,9 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.security.KeyManagementException;
+import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
-import java.security.cert.X509Certificate;
 
 /**
  * RestTemplate configuration for Spring Boot 3 and Java 17 using Apache HttpClient 5.
@@ -23,7 +22,7 @@ import java.security.cert.X509Certificate;
  * <p><b>*** EXTREMELY IMPORTANT SECURITY WARNING ***</b></p>
  * <p>This configuration creates a RestTemplate that <b>DISABLES ALL SSL/TLS CERTIFICATE VALIDATION</b>.
  * It will trust any certificate presented by any server and will not verify the hostname.
- * This is the equivalent of the configuration you provided from your Spring Boot 2.7 application.</p>
+ * This is functionally equivalent to the configuration you provided from your old application.</p>
  *
  * <p><b>DO NOT USE THIS IN A PRODUCTION ENVIRONMENT.</b> It exposes your application to
  * Man-in-the-Middle (MITM) attacks. This should only be used for local development or when
@@ -33,62 +32,48 @@ import java.security.cert.X509Certificate;
 public class RestTemplateConfiguration {
 
     /**
-     * Creates a RestTemplate bean that is configured to bypass all SSL security checks.
-     * It uses the RestTemplateBuilder provided by Spring Boot for consistency.
+     * Creates a RestTemplate bean configured to bypass all SSL security checks.
+     * This version uses a more streamlined approach to building the underlying HttpClient.
      *
      * @param builder The RestTemplateBuilder injected by Spring Boot.
      * @return A configured RestTemplate instance.
-     * @throws NoSuchAlgorithmException If the TLS algorithm is not supported.
-     * @throws KeyManagementException If initializing the SSLContext fails.
      */
     @Bean
-    public RestTemplate restTemplate(RestTemplateBuilder builder) throws NoSuchAlgorithmException, KeyManagementException {
+    public RestTemplate restTemplate(RestTemplateBuilder builder) {
+        try {
+            // 1. Create an SSLContext that uses the "TrustAllStrategy".
+            // This is a built-in HttpClient 5 strategy to simplify trusting all certificates.
+            final SSLContext sslContext = new SSLContextBuilder()
+                    .loadTrustMaterial(null, new TrustAllStrategy())
+                    .build();
 
-        // 1. Create a custom TrustManager that does not validate certificate chains.
-        // This is the insecure part.
-        final TrustManager[] trustAllCerts = new TrustManager[]{
-            new X509TrustManager() {
-                @Override
-                public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                    // No-op: trusts all client certificates
-                }
+            // 2. Create a custom SSLConnectionSocketFactory using our insecure SSLContext.
+            // We also disable hostname verification.
+            final SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(
+                sslContext,
+                NoopHostnameVerifier.INSTANCE // Disables hostname verification
+            );
 
-                @Override
-                public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                    // No-op: trusts all server certificates
-                }
-
-                @Override
-                public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[]{}; // Returns an empty array
-                }
-            }
-        };
-
-        // 2. Create an SSLContext that uses the "trust all" TrustManager.
-        final SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
-        sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
-
-        // 3. Create a custom SSLConnectionSocketFactory using our insecure SSLContext.
-        // We also disable hostname verification.
-        final SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(
-            sslContext,
-            NoopHostnameVerifier.INSTANCE // Disables hostname verification
-        );
-
-        // 4. Build the connection manager using modern builders, providing our insecure SSL factory.
-        final PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
-                .setSSLSocketFactory(sslSocketFactory)
+            // 3. Build the CloseableHttpClient using the custom SSL factory.
+            final CloseableHttpClient httpClient = HttpClients.custom()
+                .setConnectionManager(
+                    PoolingHttpClientConnectionManagerBuilder.create()
+                        .setSSLSocketFactory(sslSocketFactory)
+                        .build()
+                )
                 .build();
+            
+            // 4. Create the request factory using the custom http client.
+            final HttpComponentsClientHttpRequestFactory customRequestFactory = new HttpComponentsClientHttpRequestFactory();
+            customRequestFactory.setHttpClient(httpClient);
 
-        // 5. Build the HttpClient that will be used by the RestTemplate.
-        final CloseableHttpClient httpClient = HttpClientBuilder.create()
-                .setConnectionManager(connectionManager)
-                .build();
+            // 5. Build the RestTemplate using the builder and our custom request factory.
+            return builder
+                    .requestFactory(() -> customRequestFactory)
+                    .build();
 
-        // 6. Build the RestTemplate, injecting our custom request factory.
-        return builder
-                .requestFactory(() -> new HttpComponentsClientHttpRequestFactory(httpClient))
-                .build();
+        } catch (NoSuchAlgorithmException | KeyStoreException | KeyManagementException e) {
+            // In a real app, you would want to log this error properly.
+            throw new RuntimeException("Failed to create insecure RestTemplate", e);
+        }
     }
-}
