@@ -1,163 +1,94 @@
-import org.apache.hc.client5.http.config.ConnectionConfig;
-import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
 import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactoryBuilder;
-import org.apache.hc.core.util.Timeout;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManagerFactory;
-import java.io.FileInputStream;
-import java.io.IOException;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.security.KeyManagementException;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
-import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 
 /**
- * Production-grade Spring Boot configuration for a RestTemplate using Apache HttpClient 5.
+ * RestTemplate configuration for Spring Boot 3 and Java 17 using Apache HttpClient 5.
  *
- * This configuration is meticulously crafted using the latest, non-deprecated APIs
- * and establishes a secure, efficient, and resilient HTTP client.
+ * <p><b>*** EXTREMELY IMPORTANT SECURITY WARNING ***</b></p>
+ * <p>This configuration creates a RestTemplate that <b>DISABLES ALL SSL/TLS CERTIFICATE VALIDATION</b>.
+ * It will trust any certificate presented by any server and will not verify the hostname.
+ * This is the equivalent of the configuration you provided from your Spring Boot 2.7 application.</p>
  *
- * Key Features:
- * - Modern API Usage: Exclusively uses the current builder patterns from HttpClient 5.3+.
- * - Secure by Default: Explicitly configures TLSv1.3 and TLSv1.2 as the only supported protocols.
- * - Efficient Connection Pooling: Configures a connection pool for high-throughput scenarios.
- * - Robust Timeouts: Sets sensible connection, response, and connection lease timeouts.
- * - Custom TrustStore Example: Includes a commented-out section showing how to load a custom TrustStore.
+ * <p><b>DO NOT USE THIS IN A PRODUCTION ENVIRONMENT.</b> It exposes your application to
+ * Man-in-the-Middle (MITM) attacks. This should only be used for local development or when
+ * communicating with a trusted internal service that uses self-signed certificates.</p>
  */
 @Configuration
 public class RestTemplateConfiguration {
 
-    // --- Sensible Defaults for Timeouts and Pooling ---
-
     /**
-     * Timeout for establishing a connection with the server.
-     */
-    private static final Timeout CONNECT_TIMEOUT = Timeout.ofSeconds(5);
-
-    /**
-     * Timeout for receiving a response from the server after a connection is established.
-     * Also known as the socket timeout.
-     */
-    private static final Timeout RESPONSE_TIMEOUT = Timeout.ofSeconds(10);
-
-    /**
-     * Timeout for requesting a connection from the connection manager's pool.
-     */
-    private static final Timeout CONNECTION_REQUEST_TIMEOUT = Timeout.ofSeconds(5);
-
-    /**
-     * Maximum total number of connections in the pool.
-     */
-    private static final int MAX_TOTAL_CONNECTIONS = 100;
-
-    /**
-     * Maximum number of connections per single route (hostname).
-     */
-    private static final int MAX_CONNECTIONS_PER_ROUTE = 20;
-
-
-    /**
-     * Creates the core PoolingHttpClientConnectionManager.
-     * This is the heart of the client, managing a pool of persistent connections.
-     * This implementation is security-focused, enabling only modern TLS protocols.
+     * Creates a RestTemplate bean that is configured to bypass all SSL security checks.
+     * It uses the RestTemplateBuilder provided by Spring Boot for consistency.
      *
-     * @return A fully configured PoolingHttpClientConnectionManager.
+     * @param builder The RestTemplateBuilder injected by Spring Boot.
+     * @return A configured RestTemplate instance.
+     * @throws NoSuchAlgorithmException If the TLS algorithm is not supported.
+     * @throws KeyManagementException If initializing the SSLContext fails.
      */
     @Bean
-    public PoolingHttpClientConnectionManager poolingHttpClientConnectionManager() {
-        // Create an SSLConnectionSocketFactory with explicit TLSv1.3 and TLSv1.2 support.
-        // This is the modern, secure way to configure TLS.
-        SSLConnectionSocketFactory sslSocketFactory = SSLConnectionSocketFactoryBuilder.create()
-                .useSystemProperties() // Uses the JVM's default security settings which is often a good starting point.
-                .setSupportedProtocols("TLSv1.3", "TLSv1.2")
-                // See commented out method below for using a custom TrustStore
-                // .setSslContext(createCustomSslContext()) 
-                .build();
+    public RestTemplate restTemplate(RestTemplateBuilder builder) throws NoSuchAlgorithmException, KeyManagementException {
 
-        // Use the PoolingHttpClientConnectionManagerBuilder for modern, fluent configuration.
-        return PoolingHttpClientConnectionManagerBuilder.create()
-                .setSSLSocketFactory(sslSocketFactory)
-                .setMaxConnTotal(MAX_TOTAL_CONNECTIONS)
-                .setMaxConnPerRoute(MAX_CONNECTIONS_PER_ROUTE)
-                .setDefaultConnectionConfig(ConnectionConfig.custom()
-                        .setConnectTimeout(CONNECT_TIMEOUT)
-                        .setSocketTimeout(RESPONSE_TIMEOUT)
-                        .build())
-                .build();
-    }
+        // 1. Create a custom TrustManager that does not validate certificate chains.
+        // This is the insecure part.
+        final TrustManager[] trustAllCerts = new TrustManager[]{
+            new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                    // No-op: trusts all client certificates
+                }
 
-    /**
-     * Creates the main CloseableHttpClient bean, which is the executable client.
-     *
-     * @param connectionManager The connection manager bean.
-     * @return A configured CloseableHttpClient.
-     */
-    @Bean
-    public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager connectionManager) {
-        // Configure default request settings.
-        RequestConfig defaultRequestConfig = RequestConfig.custom()
-                .setConnectionRequestTimeout(CONNECTION_REQUEST_TIMEOUT)
-                .build();
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                    // No-op: trusts all server certificates
+                }
 
-        // Use the HttpClientBuilder for modern, fluent configuration.
-        return HttpClientBuilder.create()
-                .setConnectionManager(connectionManager)
-                .setDefaultRequestConfig(defaultRequestConfig)
-                .build();
-    }
-
-    /**
-     * Creates the RestTemplate bean, the primary Spring abstraction for client-side HTTP calls.
-     *
-     * @param httpClient The fully configured CloseableHttpClient.
-     * @return A RestTemplate instance ready for use.
-     */
-    @Bean
-    public RestTemplate restTemplate(CloseableHttpClient httpClient) {
-        // HttpComponentsClientHttpRequestFactory is the bridge between RestTemplate and Apache HttpClient.
-        ClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        return new RestTemplate(requestFactory);
-    }
-    
-    /**
-     * [OPTIONAL] Example of creating a custom SSLContext that trusts a specific TrustStore.
-     * This is useful when you need to connect to internal services with self-signed certificates.
-     * To use this, uncomment the `.setSslContext(...)` call in the connection manager bean.
-     *
-     * @return A custom SSLContext.
-     */
-    private SSLContext createCustomSslContext() {
-        try {
-            // Load the custom TrustStore file.
-            KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            try (FileInputStream instream = new FileInputStream("/path/to/your/truststore.jks")) {
-                trustStore.load(instream, "your-truststore-password".toCharArray());
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[]{}; // Returns an empty array
+                }
             }
+        };
 
-            // Create a TrustManager that trusts the CAs in our TrustStore.
-            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            trustManagerFactory.init(trustStore);
+        // 2. Create an SSLContext that uses the "trust all" TrustManager.
+        final SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
+        sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
 
-            // Create an SSLContext that uses our TrustManager.
-            SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
-            sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
-            return sslContext;
+        // 3. Create a custom SSLConnectionSocketFactory using our insecure SSLContext.
+        // We also disable hostname verification.
+        final SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(
+            sslContext,
+            NoopHostnameVerifier.INSTANCE // Disables hostname verification
+        );
 
-        } catch (KeyStoreException | IOException | NoSuchAlgorithmException | CertificateException | KeyManagementException e) {
-            // In a real application, proper logging and error handling are critical.
-            throw new RuntimeException("Failed to create custom SSL context", e);
-        }
+        // 4. Build the connection manager using modern builders, providing our insecure SSL factory.
+        final PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
+                .setSSLSocketFactory(sslSocketFactory)
+                .build();
+
+        // 5. Build the HttpClient that will be used by the RestTemplate.
+        final CloseableHttpClient httpClient = HttpClientBuilder.create()
+                .setConnectionManager(connectionManager)
+                .build();
+
+        // 6. Build the RestTemplate, injecting our custom request factory.
+        return builder
+                .requestFactory(() -> new HttpComponentsClientHttpRequestFactory(httpClient))
+                .build();
     }
 }
