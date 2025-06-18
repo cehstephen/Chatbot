@@ -1,13 +1,11 @@
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
-import org.apache.hc.client5.http.socket.ConnectionSocketFactory;
-import org.apache.hc.client5.http.socket.PlainConnectionSocketFactory;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.client5.http.ssl.SSLContexts;
-import org.apache.hc.core.http.config.Registry;
-import org.apache.hc.core.http.config.RegistryBuilder;
+import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactoryBuilder;
 import org.apache.hc.core.util.Timeout;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,107 +14,150 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.security.KeyManagementException;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
 
 /**
- * Spring Boot configuration class for creating a RestTemplate bean.
- * This configuration uses Apache HttpClient 5 as the underlying HTTP transport layer,
- * which provides advanced features like connection pooling and sophisticated request configuration.
+ * Production-grade Spring Boot configuration for a RestTemplate using Apache HttpClient 5.
  *
- * This version is explicitly configured for secure connections over TLS (HTTPS).
+ * This configuration is meticulously crafted using the latest, non-deprecated APIs
+ * and establishes a secure, efficient, and resilient HTTP client.
+ *
+ * Key Features:
+ * - Modern API Usage: Exclusively uses the current builder patterns from HttpClient 5.3+.
+ * - Secure by Default: Explicitly configures TLSv1.3 and TLSv1.2 as the only supported protocols.
+ * - Efficient Connection Pooling: Configures a connection pool for high-throughput scenarios.
+ * - Robust Timeouts: Sets sensible connection, response, and connection lease timeouts.
+ * - Custom TrustStore Example: Includes a commented-out section showing how to load a custom TrustStore.
  */
 @Configuration
 public class RestTemplateConfiguration {
 
-    // --- Configuration Constants ---
+    // --- Sensible Defaults for Timeouts and Pooling ---
 
-    private static final int MAX_TOTAL_CONNECTIONS = 100;
-    private static final int MAX_CONNECTIONS_PER_ROUTE = 20;
+    /**
+     * Timeout for establishing a connection with the server.
+     */
     private static final Timeout CONNECT_TIMEOUT = Timeout.ofSeconds(5);
+
+    /**
+     * Timeout for receiving a response from the server after a connection is established.
+     * Also known as the socket timeout.
+     */
     private static final Timeout RESPONSE_TIMEOUT = Timeout.ofSeconds(10);
+
+    /**
+     * Timeout for requesting a connection from the connection manager's pool.
+     */
     private static final Timeout CONNECTION_REQUEST_TIMEOUT = Timeout.ofSeconds(5);
 
     /**
-     * Creates and configures the connection manager for the HttpClient.
-     * This connection manager pools connections and is configured to handle both
-     * HTTP and HTTPS connections, using a secure SSL Context for the latter.
+     * Maximum total number of connections in the pool.
+     */
+    private static final int MAX_TOTAL_CONNECTIONS = 100;
+
+    /**
+     * Maximum number of connections per single route (hostname).
+     */
+    private static final int MAX_CONNECTIONS_PER_ROUTE = 20;
+
+
+    /**
+     * Creates the core PoolingHttpClientConnectionManager.
+     * This is the heart of the client, managing a pool of persistent connections.
+     * This implementation is security-focused, enabling only modern TLS protocols.
      *
-     * @return A configured PoolingHttpClientConnectionManager instance.
+     * @return A fully configured PoolingHttpClientConnectionManager.
      */
     @Bean
     public PoolingHttpClientConnectionManager poolingHttpClientConnectionManager() {
-        try {
-            // Create a default SSLContext that trusts the certificates in the JVM's default trust store.
-            SSLContext sslContext = SSLContexts.createDefault();
+        // Create an SSLConnectionSocketFactory with explicit TLSv1.3 and TLSv1.2 support.
+        // This is the modern, secure way to configure TLS.
+        SSLConnectionSocketFactory sslSocketFactory = SSLConnectionSocketFactoryBuilder.create()
+                .useSystemProperties() // Uses the JVM's default security settings which is often a good starting point.
+                .setSupportedProtocols("TLSv1.3", "TLSv1.2")
+                // See commented out method below for using a custom TrustStore
+                // .setSslContext(createCustomSslContext()) 
+                .build();
 
-            // Create a socket factory for SSL connections.
-            // This factory will use the default SSLContext and default hostname verifier.
-            SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
-
-            // Create a registry of socket factories, mapping schemes to their respective factories.
-            // This allows the connection manager to handle both "http" and "https" schemes.
-            Registry<ConnectionSocketFactory> socketFactoryRegistry = RegistryBuilder.<ConnectionSocketFactory>create()
-                    .register("https", sslSocketFactory)
-                    .register("http", new PlainConnectionSocketFactory())
-                    .build();
-
-            // Create a new connection manager with the custom socket factory registry.
-            PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager(socketFactoryRegistry);
-            connectionManager.setMaxTotal(MAX_TOTAL_CONNECTIONS);
-            connectionManager.setDefaultMaxPerRoute(MAX_CONNECTIONS_PER_ROUTE);
-            return connectionManager;
-        } catch (NoSuchAlgorithmException | KeyManagementException e) {
-            // In a production app, you'd want to log this exception properly.
-            // Failing to create the SSL context is a critical failure.
-            throw new RuntimeException("Failed to create SSL context for HttpClient", e);
-        }
-    }
-
-    /**
-     * Configures the default request settings for all HTTP requests made by the client.
-     * This includes setting various timeouts to prevent operations from blocking indefinitely.
-     *
-     * @return A configured RequestConfig instance.
-     */
-    @Bean
-    public RequestConfig requestConfig() {
-        return RequestConfig.custom()
-                .setConnectionRequestTimeout(CONNECTION_REQUEST_TIMEOUT)
-                .setConnectTimeout(CONNECT_TIMEOUT)
-                .setResponseTimeout(RESPONSE_TIMEOUT)
+        // Use the PoolingHttpClientConnectionManagerBuilder for modern, fluent configuration.
+        return PoolingHttpClientConnectionManagerBuilder.create()
+                .setSSLSocketFactory(sslSocketFactory)
+                .setMaxConnTotal(MAX_TOTAL_CONNECTIONS)
+                .setMaxConnPerRoute(MAX_CONNECTIONS_PER_ROUTE)
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setConnectTimeout(CONNECT_TIMEOUT)
+                        .setSocketTimeout(RESPONSE_TIMEOUT)
+                        .build())
                 .build();
     }
 
     /**
-     * Creates the main CloseableHttpClient bean.
-     * This client is built with the SSL-enabled connection manager and default request configuration.
-     * It is the core component that executes HTTP requests.
+     * Creates the main CloseableHttpClient bean, which is the executable client.
      *
-     * @param connectionManager The connection manager to use.
-     * @param requestConfig The default request configuration.
-     * @return A configured CloseableHttpClient instance.
+     * @param connectionManager The connection manager bean.
+     * @return A configured CloseableHttpClient.
      */
     @Bean
-    public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager connectionManager, RequestConfig requestConfig) {
+    public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager connectionManager) {
+        // Configure default request settings.
+        RequestConfig defaultRequestConfig = RequestConfig.custom()
+                .setConnectionRequestTimeout(CONNECTION_REQUEST_TIMEOUT)
+                .build();
+
+        // Use the HttpClientBuilder for modern, fluent configuration.
         return HttpClientBuilder.create()
                 .setConnectionManager(connectionManager)
-                .setDefaultRequestConfig(requestConfig)
+                .setDefaultRequestConfig(defaultRequestConfig)
                 .build();
     }
 
     /**
-     * Creates the RestTemplate bean.
-     * This is the central Spring class for client-side HTTP access. It is configured
-     * to use the HttpComponentsClientHttpRequestFactory, which in turn uses our
-     * custom-configured Apache HttpClient 5.
+     * Creates the RestTemplate bean, the primary Spring abstraction for client-side HTTP calls.
      *
-     * @param httpClient The underlying CloseableHttpClient.
-     * @return A configured RestTemplate instance.
+     * @param httpClient The fully configured CloseableHttpClient.
+     * @return A RestTemplate instance ready for use.
      */
     @Bean
     public RestTemplate restTemplate(CloseableHttpClient httpClient) {
+        // HttpComponentsClientHttpRequestFactory is the bridge between RestTemplate and Apache HttpClient.
         ClientHttpRequestFactory requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
         return new RestTemplate(requestFactory);
+    }
+    
+    /**
+     * [OPTIONAL] Example of creating a custom SSLContext that trusts a specific TrustStore.
+     * This is useful when you need to connect to internal services with self-signed certificates.
+     * To use this, uncomment the `.setSslContext(...)` call in the connection manager bean.
+     *
+     * @return A custom SSLContext.
+     */
+    private SSLContext createCustomSslContext() {
+        try {
+            // Load the custom TrustStore file.
+            KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            try (FileInputStream instream = new FileInputStream("/path/to/your/truststore.jks")) {
+                trustStore.load(instream, "your-truststore-password".toCharArray());
+            }
+
+            // Create a TrustManager that trusts the CAs in our TrustStore.
+            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(trustStore);
+
+            // Create an SSLContext that uses our TrustManager.
+            SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
+            sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+            return sslContext;
+
+        } catch (KeyStoreException | IOException | NoSuchAlgorithmException | CertificateException | KeyManagementException e) {
+            // In a real application, proper logging and error handling are critical.
+            throw new RuntimeException("Failed to create custom SSL context", e);
+        }
     }
 }
