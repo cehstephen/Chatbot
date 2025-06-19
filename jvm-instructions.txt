@@ -1,0 +1,46 @@
+Part 2: Mandatory JVM Configuration (The Real Fix)
+
+You must tell the JVM to open the necessary internal modules. Add the following line to your JVM arguments.
+
+```
+--add-opens java.base/sun.security.ssl=ALL-UNNAMED
+```
+
+Here is how to add this argument in common scenarios:
+A) If you use Maven (pom.xml)
+
+Add this to the <properties> section of your pom.xml. This configures the argument for both running and testing.
+
+```
+<properties>
+    <!-- Other properties like java.version, etc. -->
+    <argLine>--add-opens java.base/sun.security.ssl=ALL-UNNAMED</argLine>
+</properties>
+```
+
+==========================================
+
+The Correct and Only Solution
+
+You must add the --add-opens argument to the java command that launches your application inside your Dockerfile.
+
+Here is what your Dockerfile's startup command should look like:
+
+If you are using an ENTRYPOINT with exec form:
+
+```
+# Previous, incorrect way
+# ENTRYPOINT ["java", "-jar", "your-application.jar"]
+
+# New, correct way for Java 17+
+ENTRYPOINT ["java", "--add-opens", "java.base/sun.security.ssl=ALL-UNNAMED", "-jar", "your-application.jar"]
+```
+
+If you are using CMD:
+```
+# Previous, incorrect way
+# CMD java -jar your-application.jar
+
+# New, correct way for Java 17+
+CMD ["java", "--add-opens", "java.base/sun.security.ssl=ALL-UNNAMED", "-jar", "your-application.jar"]
+```
