@@ -1,43 +1,35 @@
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.exc.InvalidFormatException;
-import java.io.IOException;
-import java.util.Map;
-
 public class NonEmptyMapDeserializer extends JsonDeserializer<Map<String, String>> {
 
     @Override
     public Map<String, String> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-        
-        // 1. Read the entire structure into a JsonNode
+
+        // 1. Read the JSON into an in-memory Node
         JsonNode node = p.getCodec().readTree(p);
 
-        // 2. Perform initial structural validation
-        // It must be a JSON object and it cannot be empty.
-        if (!node.isObject() || node.isEmpty()) {
-            throw new InvalidFormatException(p, "Input must be a non-empty JSON object.", node, Map.class);
+        // 2. Perform initial structural validation on the node
+        if (!node.isObject()) {
+            throw JsonMappingException.from(p, "Input must be a JSON object.");
+        }
+        if (node.isEmpty()) {
+            throw JsonMappingException.from(p, "Map must not be empty.");
         }
 
-        // 3. Let Jackson do the heavy lifting of deserialization.
-        // This is much more robust and efficient than creating the map manually.
-        Map<String, String> map;
-        try (JsonParser nodeParser = node.traverse(p.getCodec())) {
-             // Get the default deserializer for a Map<String, String> and use it
-             map = (Map<String, String>) ctxt.findRootValueDeserializer(
-                     ctxt.getTypeFactory().constructMapType(Map.class, String.class, String.class)
-             ).deserialize(nodeParser, ctxt);
-        }
-       
-        // 4. Perform final validation on the created map's contents.
-        // Now that you have the map, check for empty keys or values.
+        // 3. Convert the Node to a Map.
+        // This is the simplest and most reliable way to perform the conversion
+        // without causing recursion or other side effects.
+        MapType mapType = ctxt.getTypeFactory().constructMapType(Map.class, String.class, String.class);
+        Map<String, String> map = p.getCodec().readValue(p.getCodec().treeAsTokens(node), mapType);
+
+        // 4. Validate the contents of the newly created map
         for (Map.Entry<String, String> entry : map.entrySet()) {
-            if (entry.getKey().isEmpty() || entry.getValue().isEmpty()) {
-                throw new InvalidFormatException(p, "Map must not have empty keys or values.", node, Map.class);
+            String key = entry.getKey();
+            String value = entry.getValue();
+
+            if (key == null || key.isEmpty() || value == null || value.isEmpty()) {
+                throw JsonMappingException.from(p, "Map keys and values must not be null or empty.");
             }
         }
-        
+
         return map;
     }
 }
