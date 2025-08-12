@@ -1,0 +1,69 @@
+package com.example.estates;
+
+import com.example.estates.api.EstateRequestDto;
+import com.example.estates.api.EstateResponseDto;
+import com.example.estates.error.EstateAlreadyExistsException;
+import com.example.estates.mapper.EstateMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Predicate;
+
+@Service
+@RequiredArgsConstructor // Injects final fields via constructor (EstateRepository and EstateMapper)
+@Slf4j
+public class EstateService {
+
+    private final EstateRepository estateRepository;
+    private final EstateMapper estateMapper; // The mapper is now injected
+
+    @Transactional
+    public List<EstateResponseDto> createEstates(EstateRequestDto requestDto) {
+        final String createdBy = "system-user";
+        final List<Estate> estatesToSave = new ArrayList<>();
+        
+        // ... logic to build estatesToSave list remains the same ...
+        final Predicate<String> isPresent = s -> s != null && !s.trim().isEmpty();
+
+        if (isPresent.test(requestDto.getFlatPropertyName())) {
+            estatesToSave.add(buildEstate(requestDto, PropertyType.FLAT, requestDto.getFlatPropertyName(), createdBy));
+        }
+        if (isPresent.test(requestDto.getDetachedPropertyName())) {
+            estatesToSave.add(buildEstate(requestDto, PropertyType.DETACHED, requestDto.getDetachedPropertyName(), createdBy));
+        }
+        if (isPresent.test(requestDto.getTerracedPropertyName())) {
+            estatesToSave.add(buildEstate(requestDto, PropertyType.TERRACED, requestDto.getTerracedPropertyName(), createdBy));
+        }
+        
+        try {
+            List<Estate> savedEstates = estateRepository.saveAll(estatesToSave);
+            // Delegate mapping to the mapper class
+            return estateMapper.toResponseDtoList(savedEstates);
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Duplicate entry attempt for domain '{}' and id '{}'.", requestDto.getEstateDomain(), requestDto.getEstateId());
+            throw new EstateAlreadyExistsException("A property for this domain, ID, and type already exists.");
+        }
+    }
+
+    public List<EstateResponseDto> findEstatesByGroup(String domain, String id) {
+        List<Estate> estates = estateRepository.findByEstateDomainAndEstateId(domain, id);
+        // Delegate mapping to the mapper class
+        return estateMapper.toResponseDtoList(estates);
+    }
+    
+    // The buildEstate helper method remains here as it's part of the service's creation logic
+    private Estate buildEstate(EstateRequestDto dto, PropertyType type, String name, String createdBy) {
+        // ... implementation remains the same
+        return Estate.builder()
+            .estateDomain(dto.getEstateDomain())
+            .estateId(dto.getEstateId())
+            .propertyType(type)
+            .propertyName(name)
+            .createdBy(createdBy)
+            .build();
+    }
+}
