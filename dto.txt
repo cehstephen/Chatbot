@@ -1,0 +1,87 @@
+package com.example.estates.api;
+
+import com.example.estates.validation.AtLeastOneProperty;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter // Used by the service to read the values
+@Setter // Used by Jackson to deserialize the JSON into this object
+@AtLeastOneProperty(
+    fieldNames = {"flatPropertyName", "detachedPropertyName", "terracedPropertyName"},
+    message = "At least one property (flat, detached, or terraced) must be provided."
+)
+public class EstateRequestDto {
+    //... fields remain the same
+    @NotBlank(message = "Estate domain must not be blank.")
+    private String estateDomain;
+
+    @NotBlank(message = "Estate ID must not be blank.")
+    private String estateId;
+    
+    private String flatPropertyName;
+    private String detachedPropertyName;
+    private String terracedPropertyName;
+}
+
+
+
+================================================================
+package com.example.estates.api;
+
+import com.example.estates.PropertyType;
+import lombok.Builder;
+import lombok.Getter;
+import java.time.LocalDateTime;
+
+@Getter   // Needed by Jackson to serialize the object to JSON
+@Builder  // Used by the mapper to construct the object
+public class EstateResponseDto {
+    private String estateDomain;
+    private String estateId;
+    private PropertyType propertyType;
+    private String propertyName;
+    private String createdBy;
+    private LocalDateTime createdAt;
+}
+
+
+
+
+========================================
+
+public class AtLeastOnePropertyValidator implements ConstraintValidator<AtLeastOneProperty, Object> {
+
+    private String[] fieldNames;
+
+    @Override
+    public void initialize(AtLeastOneProperty constraintAnnotation) {
+        // Step 1: Get the list of fields to check from the annotation
+        this.fieldNames = constraintAnnotation.fieldNames();
+    }
+
+    @Override
+    public boolean isValid(Object value, ConstraintValidatorContext context) {
+        // 'value' is the entire EstateRequestDto object
+        if (value == null) {
+            return true; // Nothing to validate
+        }
+        
+        // Step 2: Loop through the names of the fields we need to check
+        for (String fieldName : fieldNames) {
+            // Use a Spring utility to safely get the value of a field by its name
+            Object propertyValue = new BeanWrapperImpl(value).getPropertyValue(fieldName);
+            
+            // Step 3: Check if the value is present (not null and not just whitespace)
+            if (propertyValue != null && !propertyValue.toString().trim().isEmpty()) {
+                return true; // Found one valid property, so the entire object is valid. Stop checking.
+            }
+        }
+        
+        // Step 4: If the loop finishes without finding any valid property, the object is invalid.
+        return false;
+    }
+}
+
+
+
